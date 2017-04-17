@@ -97,6 +97,11 @@ class Tween:
         #x = Tween.ease(2 * x)
         return x
 
+    @staticmethod
+    def double(x):
+        x = 2 * x % 1
+        return x
+
 
 class C:
     R = [255, 0, 0]
@@ -112,68 +117,74 @@ def border(angle):
     y = [4,5,6,7,7,7,7,7,7,7,7,6,5,4,3,2,1,0,0,0,0,0,0,0,0,1,2,3][a]
     return x, y
 
-def fill(x, f):
-    n = int(64.99 * f(x))
-    return [C.W] * n + [C.K] * (64 - n)
+class Pattern:
+    @staticmethod
+    def fill(x, f):
+        n = int(64.99 * f(x))
+        return [C.W] * n + [C.K] * (64 - n)
 
-def spot(x, f):
-    pixels = [C.K] * 64
-    r = 3.5 * 1.4142 * f(x)
-    r2 = int(r**2)
-    r3 = int(1.4 * r**2)
-    for x in range(8):
-        for y in range(8):
-            d = (x - 3.5)**2 + (y - 3.5)**2
-            if d <= r2:
-                pixels[8 * y + x] = C.W
-            elif d <= r3:
-                z = int(256 * (r3 - d) / (r3 - r2))
-                pixels[8 * y + x] = [z, z, z]
-    return pixels
+    @staticmethod
+    def spot(x, f):
+        pixels = [C.K] * 64
+        r = 3.5 * 1.4142 * f(x)
+        r2 = int(r**2)
+        r3 = int(1.4 * r**2)
+        for x in range(8):
+            for y in range(8):
+                d = (x - 3.5)**2 + (y - 3.5)**2
+                if d <= r2:
+                    pixels[8 * y + x] = C.W
+                elif d <= r3:
+                    z = int(256 * (r3 - d) / (r3 - r2))
+                    pixels[8 * y + x] = [z, z, z]
+        return pixels
 
-def spiral(x, f):
-    pixels = [C.K] * 64
-    n = int(64.99 * f(x))
-    x, y = 3, 3
-    i, d, r = 0, 0, 1
-    dx = [1, 0, -1, 0]
-    dy = [0, 1, 0, -1]
-    while n > 0:
-        pixels[8 * y + x] = C.W
-        if r == 0:
-            i = i + 1
-            r = int(i / 2) + 1
-            d = (d + 1) % 4
-        x = x + dx[d]
-        y = y + dy[d]
-        r = r - 1
-        n = n - 1
-    return pixels
+    @staticmethod
+    def spiral(x, f):
+        pixels = [C.K] * 64
+        n = int(64.99 * f(x))
+        x, y = 3, 3
+        i, d, r = 0, 0, 1
+        dx = [1, 0, -1, 0]
+        dy = [0, 1, 0, -1]
+        while n > 0:
+            pixels[8 * y + x] = C.W
+            if r == 0:
+                i = i + 1
+                r = int(i / 2) + 1
+                d = (d + 1) % 4
+            x = x + dx[d]
+            y = y + dy[d]
+            r = r - 1
+            n = n - 1
+        return pixels
 
-def box(x, f):
-    pixels = [C.K] * 64
-    n = int(28.99 * f(x))
-    x = [7,7,7,7,6,5,4,3,2,1,0,0,0,0,0,0,0,0,1,2,3,4,5,6,7,7,7,7]
-    y = [4,5,6,7,7,7,7,7,7,7,7,6,5,4,3,2,1,0,0,0,0,0,0,0,0,1,2,3]
-    for i in range(n):
-        pixels[8 * y[i] + x[i]] = C.W
-    return pixels
+    @staticmethod
+    def box(x, f):
+        pixels = [C.K] * 64
+        n = int(28.99 * f(x))
+        x = [7,7,7,7,6,5,4,3,2,1,0,0,0,0,0,0,0,0,1,2,3,4,5,6,7,7,7,7]
+        y = [4,5,6,7,7,7,7,7,7,7,7,6,5,4,3,2,1,0,0,0,0,0,0,0,0,1,2,3]
+        for i in range(n):
+            pixels[8 * y[i] + x[i]] = C.W
+        return pixels
 
-def pie(x, f):
-    pixels = [C.K] * 64
-    x = f(x)
-    lut = [0.625, 0.651, 0.686, 0.727, 0.773, 0.814, 0.849, 0.875,
-           0.599, 0.625, 0.664, 0.719, 0.781, 0.836, 0.875, 0.901,
-           0.564, 0.586, 0.625, 0.699, 0.801, 0.875, 0.914, 0.936,
-           0.523, 0.531, 0.551, 0.625, 0.875, 0.949, 0.969, 0.977,
-           0.477, 0.469, 0.449, 0.375, 0.125, 0.051, 0.031, 0.023,
-           0.436, 0.414, 0.375, 0.301, 0.199, 0.125, 0.086, 0.064,
-           0.401, 0.375, 0.336, 0.281, 0.219, 0.164, 0.125, 0.099,
-           0.375, 0.349, 0.314, 0.273, 0.227, 0.186, 0.151, 0.125]
-    for i in range(64):
-        if lut[i] <= x:
-            pixels[i] = C.R
-    return pixels
+    @staticmethod
+    def pie(x, f):
+        pixels = [C.K] * 64
+        x = f(x)
+        lut = [0.625, 0.651, 0.686, 0.727, 0.773, 0.814, 0.849, 0.875,
+               0.599, 0.625, 0.664, 0.719, 0.781, 0.836, 0.875, 0.901,
+               0.564, 0.586, 0.625, 0.699, 0.801, 0.875, 0.914, 0.936,
+               0.523, 0.531, 0.551, 0.625, 0.875, 0.949, 0.969, 0.977,
+               0.477, 0.469, 0.449, 0.375, 0.125, 0.051, 0.031, 0.023,
+               0.436, 0.414, 0.375, 0.301, 0.199, 0.125, 0.086, 0.064,
+               0.401, 0.375, 0.336, 0.281, 0.219, 0.164, 0.125, 0.099,
+               0.375, 0.349, 0.314, 0.273, 0.227, 0.186, 0.151, 0.125]
+        for i in range(64):
+            if lut[i] <= x:
+                pixels[i] = C.W
+        return pixels
 
 def wait_pass(pass_details):
     sense = SenseHat()
@@ -198,13 +209,13 @@ def wait_pass(pass_details):
                 tn = tn + timedelta(seconds=2)
         x = (t - ta).total_seconds()
         if 0 <= x <= 1:
-            sense.set_pixels(spot(x, Tween.blink))
+            sense.set_pixels(Pattern.spot(Tween.double(x), Tween.blink))
             dt = 0.02
         else:
 ##        if True:
             x = (t0 - t).total_seconds() / timedelta(seconds=10).total_seconds()
             if 0 <= x <= 1:
-                sense.set_pixels(pie(x, Tween.linear))
+                sense.set_pixels(Pattern.pie(x, Tween.linear))
                 dt = 0.02
             else:
                 sense.clear()
