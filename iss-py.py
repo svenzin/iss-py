@@ -270,6 +270,23 @@ class Display:
         self.set(x, y, c)
 
 
+class T:
+    # Test scenario
+    BlinkUp = 0.1
+    StatusUpdate = 1
+    OnlineUpdate = 10
+    SpinStep = 0.1
+    AnimationUpdate = 0.01
+
+    # Highrez
+    BlinkUp = 0.2
+    StatusUpdate = 2
+    OnlineUpdate = 10
+    SpinStep = 0.1
+    AnimationUpdate = 0.1
+
+    # Lowrez
+
 class Action:
     def __init__(self):
         self.display = None
@@ -277,9 +294,49 @@ class Action:
     def run(self):
         pass
 
-    def spin_until(self, t, step=0.1):
+    def spin_until(self, t, step=T.SpinStep):
         while datetime.utcnow() < t:
             time.sleep(step)
+
+    def blink(self, display, c):
+        display.set(0, 0, c)
+        display.show()
+
+        time.sleep(T.BlinkUp)
+
+        display.set(0, 0, Color.Black)
+        display.show()
+
+
+class Search(Action):
+    def __init__(self):
+        super().__init__()
+
+    def run(self, display):
+        display.clear()
+        display.show()
+
+        i = 0
+        t0 = datetime.fromordinal(1)
+        while True:
+            t = datetime.utcnow()
+            if t >= t0:
+                display.set(0, 0, [128, 128, 0])
+                display.show()
+                if i > 0:
+                    next_pass = API.get_next_visible()
+                    i = 0
+                else:
+                    next_pass = None
+                    i += 1
+                display.set(0, 0, [0, 0, 0])
+                display.show()
+                if next_pass is not None:
+                    return next_pass
+                t0 = t + timedelta(seconds=T.OnlineUpdate)
+
+            self.blink(display, Color.scale(0.5, Color.Red))
+            time.sleep(T.StatusUpdate)
 
 
 class Standby(Action):
@@ -296,14 +353,9 @@ class Standby(Action):
             t = datetime.utcnow()
             if t >= t0: return
 
-            display.set(0, 0, Color.Green)
-            display.show()
-            time.sleep(0.1)
-
-            display.set(0, 0, Color.Black)
-            display.show()
-            time.sleep(0.9)
-
+            self.blink(display, Color.scale(0.5, Color.Green))
+            time.sleep(T.StatusUpdate)
+        
 
 class Countdown(Action):
     def __init__(self, next_pass):
@@ -327,7 +379,7 @@ class Countdown(Action):
             display.clear()
             display.pie(x, Color.scale(0.5, Color.Red))
             display.show()
-            time.sleep(0.01)
+            time.sleep(T.AnimationUpdate)
 
 
 class Setup(Action):
@@ -394,7 +446,7 @@ class Monitor(Action):
             display.edge(Azimuth.from_string('N'), Color.Blue)
             display.edge(az, Color.Red)
             display.show()
-            time.sleep(0.01)
+            time.sleep(T.AnimationUpdate)
 
         
 class IssPy:
@@ -405,6 +457,7 @@ class IssPy:
     def step(self):
         if self.next_pass is None:
             #self.next_pass = API.get_next_visible()
+            self.next_pass = Search().run(self.display)
             now = datetime.utcnow()
             dt2 = timedelta(seconds=2)
             dt10 = timedelta(seconds=10)
@@ -427,12 +480,9 @@ class IssPy:
         Countdown(self.next_pass).run(self.display)
         Setup(self.next_pass).run(self.display)
         Monitor(self.next_pass).run(self.display)
-        t = datetime.utcnow()
+        self.next_pass = None
 
-        if self.next_pass.EndTime < t:
-            self.next_pass = None
-
-        return 1, None
+        return 1, self.next_pass
 
 
 def main(args):
