@@ -6,33 +6,20 @@ from sense_hat import SenseHat
 import math
 
 
-class URL:
-    pass_summary = 'http://www.heavens-above.com/PassSummary.aspx'
-
-
-class Headers:
-    firefox = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:41.0) Gecko/20100101 Firefox/41.0'
-    }
-
-
 class Location:
-    Unspecified = {'satid': 25544,
-                   'lat': 0,
-                   'lng': 0,
-                   'loc': 'Unspecified',
-                   'alt': 0,
-                   'tz': 'UCT'}
-    Pune = {'satid': 25544,
+    Tintagel = {'name': 'Tintagel Castle',
+                'lat': 50.6673,
+                'lng': -4.7585,
+                'alt': 39,
+                'tz': 'GMT'}
+    Pune = {'name': 'Pune',
             'lat': 18.5204,
             'lng': 73.8567,
-            'loc': 'Pune',
             'alt': 560,
             'tz': 'UCTm5colon30'}
-    Marcellaz = {'satid': 25544,
+    Marcellaz = {'name': 'Marcellaz',
                  'lat': 46.1453,
                  'lng': 6.355,
-                 'loc': 'Marcellaz',
                  'alt': 647,
                  'tz': 'CET'}
 
@@ -95,38 +82,85 @@ class Pass:
             self.EndTime.strftime("%H:%M:%S"))
 
 
-def makePass(cells):
-    pass_date = datetime.strptime(cells[0][0].text, '%d %b')
-    pass_date = pass_date.date()
-    pass_date = pass_date.replace(year=date.today().year)
+class HeavensAbove:
+    def __init__(self, loc):
+        self.location = loc
+    
+    def get_next_visibles(self):
+        passes = []
+        r = requests.get('http://www.heavens-above.com/PassSummary.aspx',
+                         params=HeavensAbove._from_location(self.location))
+        d = html.fromstring(r.text)
+        now = datetime.utcnow()
+        for row in d.cssselect('.standardTable .clickableRow'):
+            p = HeavensAbove._make_pass(row.cssselect('td'))
+            if p.EndTime > now:
+                passes.append(p)
+        return passes
 
-    p = Pass()
-    p.Date = pass_date
-    p.Magnitude = float(cells[1].text)
-    start_time = datetime.strptime(cells[2].text, '%H:%M:%S').time()
-    p.StartTime = datetime.combine(pass_date, start_time)
-    p.StartAltitude = float(cells[3].text.split('°')[0])
-    p.StartAzimuth = Azimuth.from_string(cells[4].text)
-    high_time = datetime.strptime(cells[5].text, '%H:%M:%S').time()
-    p.HighTime = datetime.combine(pass_date, high_time)
-    p.HighAltitude = float(cells[6].text.split('°')[0])
-    p.HighAzimuth = Azimuth.from_string(cells[7].text)
-    end_time = datetime.strptime(cells[8].text, '%H:%M:%S').time()
-    p.EndTime = datetime.combine(pass_date, end_time)
-    p.EndAltitude = float(cells[9].text.split('°')[0])
-    p.EndAzimuth = Azimuth.from_string(cells[10].text)
-    return p
+    @staticmethod
+    def _from_location(loc):
+        return {'satid': 25544,
+                'lat': loc['lat'],
+                'lng': loc['lng'],
+                'loc': loc['name'],
+                'alt': loc['alt'],
+                'tz': 'UCT'}
+
+    @staticmethod
+    def _make_pass(cells):
+        pass_date = datetime.strptime(cells[0][0].text, '%d %b')
+        pass_date = pass_date.date()
+        pass_date = pass_date.replace(year=date.today().year)
+
+        p = Pass()
+        p.Date = pass_date
+        p.Magnitude = float(cells[1].text)
+        start_time = datetime.strptime(cells[2].text, '%H:%M:%S').time()
+        p.StartTime = datetime.combine(pass_date, start_time)
+        p.StartAltitude = float(cells[3].text.split('°')[0])
+        p.StartAzimuth = Azimuth.from_string(cells[4].text)
+        high_time = datetime.strptime(cells[5].text, '%H:%M:%S').time()
+        p.HighTime = datetime.combine(pass_date, high_time)
+        p.HighAltitude = float(cells[6].text.split('°')[0])
+        p.HighAzimuth = Azimuth.from_string(cells[7].text)
+        end_time = datetime.strptime(cells[8].text, '%H:%M:%S').time()
+        p.EndTime = datetime.combine(pass_date, end_time)
+        p.EndAltitude = float(cells[9].text.split('°')[0])
+        p.EndAzimuth = Azimuth.from_string(cells[10].text)
+        return p
+
+
+class TestProvider:
+    def get_next_visibles(self):
+        now = datetime.utcnow()
+        p = Pass()
+        p.Date = date.today()
+        p.Magnitude = -2.6
+        p.StartTime = now + timedelta(seconds=10)
+        p.StartAltitude = 10
+        p.StartAzimuth = Azimuth.from_string('WNW')
+        p.HighTime = p.StartTime + timedelta(minutes=1)
+        p.HighAltitude = 37
+        p.HighAzimuth = Azimuth.from_string('SW')
+        p.EndTime = p.HighTime + timedelta(minutes=1)
+        p.EndAltitude = 24
+        p.EndAzimuth = Azimuth.from_string('S')
+        return [p]
 
 
 class API:
+    _provider = None
+
+    @staticmethod
+    def set_provider(provider):
+        API._provider = provider
+
     @staticmethod
     def get_next_visibles():
-        passes = []
-        r = requests.get(URL.pass_summary, headers=Headers.firefox, params=Location.Pune)
-        d = html.fromstring(r.text)
-        for row in d.cssselect('.standardTable .clickableRow'):
-            passes.append(makePass(row.cssselect('td')))
-        return passes
+        if API._provider is None:
+            return []
+        return API._provider.get_next_visibles()
 
     @staticmethod
     def get_next_visible():
@@ -155,7 +189,7 @@ class Tween:
 
     @staticmethod
     def ease_in(x):
-        x = 1 - ease_out(1 - x)
+        x = 1 - Tween.ease_out(1 - x)
         return x
 
     @staticmethod
@@ -186,6 +220,7 @@ class Color:
     Blue = [0, 0, 255]
     White = [255, 255, 255]
     Black = [0, 0, 0]
+    Yellow = [255, 255, 0]
 
     @staticmethod
     def scale(x, c):
@@ -202,6 +237,10 @@ class Color:
     @staticmethod
     def blue(x):
         return Color.scale(x, Color.Blue)
+
+    @staticmethod
+    def yellow(x):
+        return Color.scale(x, Color.Yellow)
 
     @staticmethod
     def white(x):
@@ -272,20 +311,31 @@ class Display:
 
 class T:
     # Test scenario
-    BlinkUp = 0.1
-    StatusUpdate = 1
-    OnlineUpdate = 10
-    SpinStep = 0.1
-    AnimationUpdate = 0.01
+##    BlinkUp = 0.1
+##    StatusUpdate = 1
+##    OnlineUpdate = 10
+##    SpinStep = 0.1
+##    AnimationUpdate = 0.01
+##    CountdownDuration = timedelta(seconds=6)
+##    SetupDuration = timedelta(seconds=2)
 
     # Highrez
-    BlinkUp = 0.2
+    BlinkUp = 0.1
     StatusUpdate = 2
     OnlineUpdate = 10
     SpinStep = 0.1
     AnimationUpdate = 0.1
+    CountdownDuration = timedelta(seconds=60)
+    SetupDuration = timedelta(seconds=15)
 
     # Lowrez
+##    BlinkUp = 0.1
+##    StatusUpdate = 10
+##    OnlineUpdate = 60
+##    SpinStep = 0.1
+##    AnimationUpdate = 1
+##    CountdownDuration = timedelta(seconds=300)
+##    SetupDuration = timedelta(seconds=60)
 
 class Action:
     def __init__(self):
@@ -316,26 +366,24 @@ class Search(Action):
         display.clear()
         display.show()
 
-        i = 0
         t0 = datetime.fromordinal(1)
         while True:
             t = datetime.utcnow()
             if t >= t0:
-                display.set(0, 0, [128, 128, 0])
+                display.set(0, 0, Color.yellow(0.5))
                 display.show()
-                if i > 0:
-                    next_pass = API.get_next_visible()
-                    i = 0
-                else:
-                    next_pass = None
-                    i += 1
-                display.set(0, 0, [0, 0, 0])
+
+                next_pass = API.get_next_visible()
+
+                display.set(0, 0, Color.Black)
                 display.show()
+
                 if next_pass is not None:
                     return next_pass
+
                 t0 = t + timedelta(seconds=T.OnlineUpdate)
 
-            self.blink(display, Color.scale(0.5, Color.Red))
+            self.blink(display, Color.red(0.5))
             time.sleep(T.StatusUpdate)
 
 
@@ -348,12 +396,12 @@ class Standby(Action):
         display.clear()
         display.show()
         
-        t0 = self.next_pass.StartTime - timedelta(seconds=6)
+        t0 = self.next_pass.StartTime - T.CountdownDuration - T.SetupDuration
         while True:
             t = datetime.utcnow()
             if t >= t0: return
 
-            self.blink(display, Color.scale(0.5, Color.Green))
+            self.blink(display, Color.green(0.5))
             time.sleep(T.StatusUpdate)
         
 
@@ -366,8 +414,8 @@ class Countdown(Action):
         display.clear()
         display.show()
 
-        t0 = self.next_pass.StartTime - timedelta(seconds=7)
-        t1 = self.next_pass.StartTime - timedelta(seconds=2)
+        t0 = self.next_pass.StartTime - T.CountdownDuration - T.SetupDuration
+        t1 = self.next_pass.StartTime - T.SetupDuration
 
         self.spin_until(t0)
         
@@ -377,7 +425,7 @@ class Countdown(Action):
             
             x = (t1 - t).total_seconds() / (t1 - t0).total_seconds()
             display.clear()
-            display.pie(x, Color.scale(0.5, Color.Red))
+            display.pie(x, Color.red(0.5))
             display.show()
             time.sleep(T.AnimationUpdate)
 
@@ -399,7 +447,7 @@ class Setup(Action):
             time.sleep(0.2)
             display.clear()
             display.edge(Azimuth.from_string('N'), Color.Blue)
-            display.edge(self.next_pass.StartAzimuth, Color.scale(0.25, Color.Red))
+            display.edge(self.next_pass.StartAzimuth, Color.red(0.5))
             display.show()
             time.sleep(0.2)
 
@@ -456,43 +504,28 @@ class IssPy:
 
     def step(self):
         if self.next_pass is None:
-            #self.next_pass = API.get_next_visible()
             self.next_pass = Search().run(self.display)
-            now = datetime.utcnow()
-            dt2 = timedelta(seconds=2)
-            dt10 = timedelta(seconds=10)
-            p = Pass()
-            p.Date = date.today()
-            p.Magnitude = 0
-            p.StartTime = now + dt10
-            p.StartAltitude = 10
-            p.StartAzimuth = Azimuth.from_string('S')
-            p.HighTime = now + dt10 + dt2
-            p.HighAltitude = 90
-            p.HighAzimuth = Azimuth.from_string('W')
-            p.EndTime = now + dt10 + 3 * dt2
-            p.EndAltitude = 10
-            p.EndAzimuth = Azimuth.from_string('ESE')
-            self.next_pass = p
-            return 1, self.next_pass
+            print(datetime.utcnow(), self.next_pass)
 
-        Standby(self.next_pass).run(self.display)
-        Countdown(self.next_pass).run(self.display)
-        Setup(self.next_pass).run(self.display)
-        Monitor(self.next_pass).run(self.display)
-        self.next_pass = None
+        if self.next_pass is not None:
+            Standby(self.next_pass).run(self.display)
+            Countdown(self.next_pass).run(self.display)
+            Setup(self.next_pass).run(self.display)
+            Monitor(self.next_pass).run(self.display)
+            self.next_pass = None
 
-        return 1, self.next_pass
+        return self.next_pass
 
 
 def main(args):
     try:
+        API.set_provider(TestProvider())
+        #API.set_provider(HeavensAbove(Location.Pune))
         isspy = IssPy()
         while True:
-            dt, data = isspy.step()
+            data = isspy.step()
             if data is not None:
-                print(datetime.utcnow(), dt, data)
-            time.sleep(dt)
+                print(datetime.utcnow(), data)
     except:
         SenseHat().clear()
         raise
