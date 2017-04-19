@@ -251,13 +251,22 @@ class Display:
     def __init__(self):
         self.sense_hat = SenseHat()
         self.pixels = [Color.Black] * 64
+        self.enabled = True
+
+    def disable(self):
+        self.enabled = False
+        self.sense_hat.clear()
+
+    def enable(self):
+        self.enabled = True
 
     def clear(self):
         for i in range(64):
             self.pixels[i] = Color.Black
 
     def show(self):
-        self.sense_hat.set_pixels(self.pixels)
+        if self.enabled:
+            self.sense_hat.set_pixels(self.pixels)
 
     def set(self, x, y, c):
         self.pixels[8 * y + x] = c
