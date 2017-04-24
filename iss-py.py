@@ -6,22 +6,16 @@ from sense_hat import SenseHat
 import math
 
 
+def info(*args):
+    print(datetime.utcnow().strftime("[%y-%m-%d %H:%M:%S]"), *args)
+
+
 class Location:
     Tintagel = {'name': 'Tintagel Castle',
                 'lat': 50.6673,
                 'lng': -4.7585,
                 'alt': 39,
                 'tz': 'GMT'}
-    Pune = {'name': 'Pune',
-            'lat': 18.5204,
-            'lng': 73.8567,
-            'alt': 560,
-            'tz': 'UCTm5colon30'}
-    Marcellaz = {'name': 'Marcellaz',
-                 'lat': 46.1453,
-                 'lng': 6.355,
-                 'alt': 647,
-                 'tz': 'CET'}
 
 
 class Azimuth:
@@ -85,6 +79,9 @@ class Pass:
 class HeavensAbove:
     def __init__(self, loc):
         self.location = loc
+
+    def name(self):
+        return "Heavens Above (www.heavens-above.com)"
     
     def get_next_visibles(self):
         passes = []
@@ -132,12 +129,15 @@ class HeavensAbove:
 
 
 class TestProvider:
+    def name(self):
+        return "TestProvider"
+    
     def get_next_visibles(self):
         now = datetime.utcnow()
         p = Pass()
         p.Date = date.today()
         p.Magnitude = -2.6
-        p.StartTime = now + timedelta(seconds=10)
+        p.StartTime = now + timedelta(minutes=1.2)
         p.StartAltitude = 10
         p.StartAzimuth = Azimuth.from_string('WNW')
         p.HighTime = p.StartTime + timedelta(minutes=1)
@@ -155,6 +155,7 @@ class API:
     @staticmethod
     def set_provider(provider):
         API._provider = provider
+        info('Provider set to "{}"'.format(provider.name()))
 
     @staticmethod
     def get_next_visibles():
@@ -213,6 +214,10 @@ class Tween:
         x = 2 * x % 1
         return x
 
+    @staticmethod
+    def back_and_forth(x):
+        return 1 - abs(1 - 2 * x)
+
 
 class Color:
     Red = [255, 0, 0]
@@ -250,6 +255,7 @@ class Color:
 class Display:
     def __init__(self):
         self.sense_hat = SenseHat()
+        self.sense_hat.rotation = 180
         self.pixels = [Color.Black] * 64
         self.enabled = True
 
@@ -272,14 +278,14 @@ class Display:
         self.pixels[8 * y + x] = c
 
     def pie(self, x, c):
-        lut = [0.625, 0.651, 0.686, 0.727, 0.773, 0.814, 0.849, 0.875,
-               0.599, 0.625, 0.664, 0.719, 0.781, 0.836, 0.875, 0.901,
-               0.564, 0.586, 0.625, 0.699, 0.801, 0.875, 0.914, 0.936,
-               0.523, 0.531, 0.551, 0.625, 0.875, 0.949, 0.969, 0.977,
-               0.477, 0.469, 0.449, 0.375, 0.125, 0.051, 0.031, 0.023,
-               0.436, 0.414, 0.375, 0.301, 0.199, 0.125, 0.086, 0.064,
-               0.401, 0.375, 0.336, 0.281, 0.219, 0.164, 0.125, 0.099,
-               0.375, 0.349, 0.314, 0.273, 0.227, 0.186, 0.151, 0.125]
+        lut = [0.875, 0.901, 0.936, 0.977, 0.023, 0.064, 0.099, 0.125,
+               0.849, 0.875, 0.914, 0.969, 0.031, 0.086, 0.125, 0.151,
+               0.814, 0.836, 0.875, 0.949, 0.051, 0.125, 0.164, 0.186,
+               0.773, 0.781, 0.801, 0.875, 0.125, 0.199, 0.219, 0.227,
+               0.727, 0.719, 0.699, 0.625, 0.375, 0.301, 0.281, 0.273,
+               0.686, 0.664, 0.625, 0.551, 0.449, 0.375, 0.336, 0.314,
+               0.651, 0.625, 0.586, 0.531, 0.469, 0.414, 0.375, 0.349,
+               0.625, 0.599, 0.564, 0.523, 0.477, 0.436, 0.401, 0.375]
         for i in range(64):
             if lut[i] <= x:
                 self.pixels[i] = c
@@ -305,17 +311,96 @@ class Display:
 
     def edge(self, az, c):
         ai = int(az / 12.857143)
-        x = [7, 7, 7, 7,
-             6, 5, 4, 3, 2, 1, 0,
-             0, 0, 0, 0, 0, 0, 0,
-             1, 2, 3, 4, 5, 6, 7,
-             7, 7, 7][ai]
-        y = [4, 5, 6, 7,
+        x = [4, 5, 6, 7,
              7, 7, 7, 7, 7, 7, 7,
              6, 5, 4, 3, 2, 1, 0,
              0, 0, 0, 0, 0, 0, 0,
              1, 2, 3][ai]
+        y = [0, 0, 0, 0,
+             1, 2, 3, 4, 5, 6, 7,
+             7, 7, 7, 7, 7, 7, 7,
+             6, 5, 4, 3, 2, 1, 0,
+             0, 0, 0][ai]
         self.set(x, y, c)
+
+    def draw(self, mask, dx, dy, c):
+        sy, sx = len(mask), len(mask[0])
+        x0 = max(0, -dx)
+        x1 = min(sx, 8 - dx) 
+        y0 = max(0, -dy)
+        y1 = min(sy, 8 - dy)
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                if mask[y][x] > 0:
+                    self.pixels[8 * (y + dy) + (x + dx)] = c
+
+    def letter(self, l, dx, dy, c):
+        print(l)
+        l = S.get(l)
+        print(l)
+        if l:
+            self.draw(l, dx, dy, c)
+
+
+class S:
+    iss_body = [[0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 1, 0, 0, 0],
+                [0, 1, 1, 1, 1, 1, 0],
+                [0, 0, 0, 1, 0, 0, 0],
+                [0, 0, 0, 1, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0]]
+    iss_panels = [[1, 1, 0, 0, 0, 1, 1],
+                  [1, 1, 0, 0, 0, 1, 1],
+                  [1, 1, 0, 0, 0, 1, 1],
+                  [1, 0, 0, 0, 0, 0, 1],
+                  [1, 1, 0, 0, 0, 1, 1],
+                  [1, 1, 0, 0, 0, 1, 1],
+                  [1, 1, 0, 0, 0, 1, 1]]
+    email = [[1, 1, 1, 1, 1, 1, 1],
+             [1, 1, 0, 0, 0, 1, 1],
+             [1, 0, 1, 0, 1, 0, 1],
+             [1, 0, 0, 1, 0, 0, 1],
+             [1, 0, 0, 0, 0, 0, 1],
+             [1, 1, 1, 1, 1, 1, 1]]
+    data = 'eNp1kgkOACEIA4f/f3o3HqWixBjkKlgggvgvQzLe0ilvWD' \
+           'ZWfFzyeUbCxs4a21cvVlE1h0Q6Myx9Xe0Z1nhWX4bH05tI' \
+           '+oNxIT2srzjR9FeSg9oX4RgUW+Xo4IueL8O+Ypw/MmvH2p' \
+           'zItop+VuLFnvrec+KeP2V/RGXYzt28yQaPPer5+gAhdQFn'
+    alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789'
+    letters = {}
+    digits = []
+
+    @staticmethod
+    def init():
+        import zlib, base64
+        pixels = zlib.decompress(base64.b64decode(S.data))
+        pixels = [pixels[152*i:152*(i+1)] for i in range(5)]
+        S.letters = {}
+        for i in range(len(S.alphabet)):
+            l = S.alphabet[i]
+            letter = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+            for y in range(5):
+                for x in range(4):
+                    letter[y][x] = pixels[y][4 * i + x]
+            S.letters[l] = letter
+        for n in range(10):
+            d = str(n)
+            S.digits.append(S.letters[d])
+
+    @staticmethod
+    def letter(l):
+        try:
+            return S.letters[l]
+        except KeyError:
+            return None
+
+    @staticmethod
+    def digit(n):
+        try:
+            return S.digits[n]
+        except IndexError:
+            return None
 
 
 class T:
@@ -358,12 +443,12 @@ class Action:
             time.sleep(step)
 
     def blink(self, display, c):
-        display.set(0, 0, c)
+        display.set(7, 7, c)
         display.show()
 
         time.sleep(T.BlinkUp)
 
-        display.set(0, 0, Color.Black)
+        display.set(7, 7, Color.Black)
         display.show()
 
 
@@ -404,7 +489,7 @@ class Standby(Action):
     def run(self, display):
         display.clear()
         display.show()
-        
+
         t0 = self.next_pass.StartTime - T.CountdownDuration - T.SetupDuration
         while True:
             t = datetime.utcnow()
@@ -435,6 +520,10 @@ class Countdown(Action):
             x = (t1 - t).total_seconds() / (t1 - t0).total_seconds()
             display.clear()
             display.pie(x, Color.red(0.5))
+            dt = int((t1 - t).total_seconds())
+            if (dt < 100):
+                display.draw(S.digit(dt // 10), 1, 1, Color.White)
+                display.draw(S.digit(dt % 10), 4, 1, Color.White)
             display.show()
             time.sleep(T.AnimationUpdate)
 
@@ -505,16 +594,52 @@ class Monitor(Action):
             display.show()
             time.sleep(T.AnimationUpdate)
 
+def splash_screen(display):
+    for i in range(20):
+        x = Tween.ease(Tween.back_and_forth(i / 20))
+        display.clear()
+        display.draw(S.iss_panels, 0, 0, Color.yellow(x))
+        display.draw(S.iss_body, 0, 0, Color.white(x))
+        display.show()
+        time.sleep(0.1)
+    
+    
+def debug(display):
+    for l in S.alphabet:
+        display.clear()
+        display.letter(l, 0, 0, Color.Red)
+        display.show()
+        time.sleep(0.05)
+
+    display.clear()
+    display.draw(S.iss_panels, 0, 0, Color.Yellow)
+    display.draw(S.iss_body, 0, 0, Color.White)
+    display.show()
+    time.sleep(1)
+
+    display.clear()
+    display.draw(S.email, 0, 0, Color.White)
+    display.show()
+    time.sleep(1)
+
+    for x in range(8):
+        display.clear()
+        display.draw(S.email, x, 0, Color.White)
+        display.show()
+        time.sleep(0.1)
         
 class IssPy:
     def __init__(self):
         self.display = Display()
         self.next_pass = None
+        
+##        debug(self.display)
+        splash_screen(self.display)
 
     def step(self):
         if self.next_pass is None:
             self.next_pass = Search().run(self.display)
-            print(datetime.utcnow(), self.next_pass)
+            info("Next pass:", self.next_pass)
 
         if self.next_pass is not None:
             Standby(self.next_pass).run(self.display)
@@ -523,18 +648,34 @@ class IssPy:
             Monitor(self.next_pass).run(self.display)
             self.next_pass = None
 
-        return self.next_pass
 
+def main(arguments):
+    import argparse
+    import json
+    parser = argparse.ArgumentParser('IssPy - ISS monitoring system')
+    parser.add_argument('-f', type=open, dest='file')
+##    args = parser.parse_args(arguments[1:])
+##    args = parser.parse_args('-f marcellaz.json'.split())
+    args = parser.parse_args('-f pune.json'.split())
 
-def main(args):
+    settings = None
+    if args.file:
+        settings = json.load(args.file)
+
+    location = Location.Tintagel
+    if settings:
+        location = settings
+    info('Location set to "{}"'.format(location['name']))
+
+    S.init()
+
     try:
+        provider = TestProvider()
         API.set_provider(TestProvider())
-        #API.set_provider(HeavensAbove(Location.Pune))
+##        API.set_provider(HeavensAbove(location))
         isspy = IssPy()
         while True:
             data = isspy.step()
-            if data is not None:
-                print(datetime.utcnow(), data)
     except:
         SenseHat().clear()
         raise
