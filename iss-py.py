@@ -10,14 +10,6 @@ def info(*args):
     print(datetime.utcnow().strftime("[%y-%m-%d %H:%M:%S]"), *args)
 
 
-class Location:
-    Tintagel = {'name': 'Tintagel Castle',
-                'lat': 50.6673,
-                'lng': -4.7585,
-                'alt': 39,
-                'tz': 'GMT'}
-
-
 class Azimuth:
     Names = {
         'N': 0, 'NNE': 22.5, 'NE': 45, 'ENE': 67.5,
@@ -137,7 +129,7 @@ class TestProvider:
         p = Pass()
         p.Date = date.today()
         p.Magnitude = -2.6
-        p.StartTime = now + timedelta(minutes=1.2)
+        p.StartTime = now + timedelta(minutes=2.1)
         p.StartAltitude = 10
         p.StartAzimuth = Azimuth.from_string('WNW')
         p.HighTime = p.StartTime + timedelta(minutes=1)
@@ -334,13 +326,6 @@ class Display:
                 if mask[y][x] > 0:
                     self.pixels[8 * (y + dy) + (x + dx)] = c
 
-    def letter(self, l, dx, dy, c):
-        print(l)
-        l = S.get(l)
-        print(l)
-        if l:
-            self.draw(l, dx, dy, c)
-
 
 class S:
     iss_body = [[0, 0, 0, 0, 0, 0, 0],
@@ -421,6 +406,10 @@ class T:
     AnimationUpdate = 0.1
     CountdownDuration = timedelta(seconds=60)
     SetupDuration = timedelta(seconds=15)
+    NotifyPassDuration = timedelta(seconds=2)
+    NotifyFadeDuration = timedelta(seconds=1)
+    NotifyTextDuration = timedelta(seconds=1)
+    SplashDuration = timedelta(seconds=2)
 
     # Lowrez
 ##    BlinkUp = 0.1
@@ -431,177 +420,196 @@ class T:
 ##    CountdownDuration = timedelta(seconds=300)
 ##    SetupDuration = timedelta(seconds=60)
 
-class Action:
-    def __init__(self):
-        self.display = None
 
-    def run(self):
-        pass
+def blink(display, c):
+    display.set(7, 7, c)
+    display.show()
 
-    def spin_until(self, t, step=T.SpinStep):
-        while datetime.utcnow() < t:
-            time.sleep(step)
+    time.sleep(T.BlinkUp)
 
-    def blink(self, display, c):
-        display.set(7, 7, c)
-        display.show()
-
-        time.sleep(T.BlinkUp)
-
-        display.set(7, 7, Color.Black)
-        display.show()
+    display.set(7, 7, Color.Black)
+    display.show()
 
 
-class Search(Action):
-    def __init__(self):
-        super().__init__()
+def search(display):
+    display.clear()
+    display.show()
 
-    def run(self, display):
+    t0 = datetime.fromordinal(1)
+    while True:
+        t = datetime.utcnow()
+        if t >= t0:
+            display.set(7, 7, Color.yellow(0.5))
+            display.show()
+
+            next_pass = API.get_next_visible()
+
+            display.set(7, 7, Color.Black)
+            display.show()
+
+            if next_pass is not None:
+                return next_pass
+
+            t0 = t + timedelta(seconds=T.OnlineUpdate)
+
+        blink(display, Color.red(0.5))
+        time.sleep(T.StatusUpdate)
+
+
+def notify(display, text):
+    n = len(text)
+    l = [S.letter(i) for i in text]
+    x = [2 - 4 * i for i in range(n)]
+    y = [1] * n
+
+    for d in range(-7, 7):
         display.clear()
+        display.draw(S.iss_body, d, -d, Color.White)
+        display.draw(S.iss_panels, d, -d, Color.Yellow)
         display.show()
+        time.sleep(T.AnimationUpdate)
 
-        t0 = datetime.fromordinal(1)
-        while True:
-            t = datetime.utcnow()
-            if t >= t0:
-                display.set(0, 0, Color.yellow(0.5))
-                display.show()
-
-                next_pass = API.get_next_visible()
-
-                display.set(0, 0, Color.Black)
-                display.show()
-
-                if next_pass is not None:
-                    return next_pass
-
-                t0 = t + timedelta(seconds=T.OnlineUpdate)
-
-            self.blink(display, Color.red(0.5))
-            time.sleep(T.StatusUpdate)
+    display.clear()
+    steps = int(T.NotifyFadeDuration.total_seconds() / T.AnimationUpdate)
+    for t in range(steps):
+        for ll, xx, yy in zip(l, x, y):
+            display.draw(ll, xx, yy, Color.yellow(t / steps))
+            display.show()
+        time.sleep(T.AnimationUpdate)
+    time.sleep(T.NotifyTextDuration.total_seconds())
+    for t in range(steps):
+        for ll, xx, yy in zip(l, x, y):
+            display.draw(ll, xx, yy, Color.yellow(1 - t / steps))
+            display.show()
+        time.sleep(T.AnimationUpdate)
 
 
-class Standby(Action):
-    def __init__(self, next_pass):
-        super().__init__()
-        self.next_pass = next_pass
+def standby(display, next_pass):
+    display.clear()
+    display.show()
 
-    def run(self, display):
-        display.clear()
-        display.show()
+    t0 = next_pass.StartTime
+    reminders = [(t0 - timedelta(hours=24), '1D'),
+                 (t0 - timedelta(hours=12), '12H'),
+                 (t0 - timedelta(hours=6), '6H'),
+                 (t0 - timedelta(hours=3), '3H'),
+                 (t0 - timedelta(hours=2), '2H'),
+                 (t0 - timedelta(hours=1), '1H'),
+                 (t0 - timedelta(minutes=45), '45'),
+                 (t0 - timedelta(minutes=30), '30'),
+                 (t0 - timedelta(minutes=15), '15'),
+                 (t0 - timedelta(minutes=10), '10'),
+                 (t0 - timedelta(minutes=5), '5'),
+                 (t0 - timedelta(minutes=2), '2'),]
+    
+    t0 = next_pass.StartTime - T.CountdownDuration - T.SetupDuration
+    while True:
+        t = datetime.utcnow()
+        if t >= t0: return
 
-        t0 = self.next_pass.StartTime - T.CountdownDuration - T.SetupDuration
-        while True:
-            t = datetime.utcnow()
-            if t >= t0: return
+        reminder = None
+        while len(reminders) > 0 and t >= reminders[0][0]:
+            reminder = reminders.pop(0)
 
-            self.blink(display, Color.green(0.5))
-            time.sleep(T.StatusUpdate)
+        if reminder:
+            notify(display, reminder[1])
+
+        blink(display, Color.green(0.5))
+        time.sleep(T.StatusUpdate)
         
 
-class Countdown(Action):
-    def __init__(self, next_pass):
-        super().__init__()
-        self.next_pass = next_pass
+def countdown(display, next_pass):
+    display.clear()
+    display.show()
 
-    def run(self, display):
-        display.clear()
-        display.show()
+    t0 = next_pass.StartTime - T.CountdownDuration - T.SetupDuration
+    t1 = next_pass.StartTime - T.SetupDuration
 
-        t0 = self.next_pass.StartTime - T.CountdownDuration - T.SetupDuration
-        t1 = self.next_pass.StartTime - T.SetupDuration
-
-        self.spin_until(t0)
+    while datetime.utcnow() < t0:
+        time.sleep(T.SpinStep)
+    
+    while True:
+        t = datetime.utcnow()
+        if t >= t1: return
         
-        while True:
-            t = datetime.utcnow()
-            if t >= t1: return
-            
-            x = (t1 - t).total_seconds() / (t1 - t0).total_seconds()
-            display.clear()
-            display.pie(x, Color.red(0.5))
-            dt = int((t1 - t).total_seconds())
-            if (dt < 100):
-                display.draw(S.digit(dt // 10), 1, 1, Color.White)
-                display.draw(S.digit(dt % 10), 4, 1, Color.White)
-            display.show()
-            time.sleep(T.AnimationUpdate)
-
-
-class Setup(Action):
-    def __init__(self, next_pass):
-        super().__init__()
-        self.next_pass = next_pass
-
-    def run(self, display):
+        x = (t1 - t).total_seconds() / (t1 - t0).total_seconds()
         display.clear()
+        display.pie(x, Color.red(0.5))
+        dt = int((t1 - t).total_seconds())
+        if (dt < 100):
+            display.draw(S.digit(dt // 10), 1, 1, Color.White)
+            display.draw(S.digit(dt % 10), 4, 1, Color.White)
         display.show()
-
-        t0 = self.next_pass.StartTime
-        while datetime.utcnow() < t0:
-            display.clear()
-            display.edge(Azimuth.from_string('N'), Color.Blue)
-            display.show()
-            time.sleep(0.2)
-            display.clear()
-            display.edge(Azimuth.from_string('N'), Color.Blue)
-            display.edge(self.next_pass.StartAzimuth, Color.red(0.5))
-            display.show()
-            time.sleep(0.2)
+        time.sleep(T.AnimationUpdate)
 
 
-class Monitor(Action):
-    def __init__(self, next_pass):
-        super().__init__()
-        self.next_pass = next_pass
+def setup(display, next_pass):
+    display.clear()
+    display.show()
 
-    def run(self, display):
+    t0 = next_pass.StartTime
+    while datetime.utcnow() < t0:
         display.clear()
+        display.edge(Azimuth.from_string('N'), Color.Blue)
         display.show()
+        time.sleep(0.2)
+        display.clear()
+        display.edge(Azimuth.from_string('N'), Color.Blue)
+        display.edge(next_pass.StartAzimuth, Color.red(0.5))
+        display.show()
+        time.sleep(0.2)
 
-        t0 = self.next_pass.StartTime
-        t1 = self.next_pass.HighTime
-        t2 = self.next_pass.EndTime
 
-        self.spin_until(t0)
+def monitor(display, next_pass):
+    display.clear()
+    display.show()
 
-        da1 = self.next_pass.HighAzimuth - self.next_pass.StartAzimuth
-        if da1 > 180:
-            da1 = da1 - 360
-        da2 = self.next_pass.EndAzimuth - self.next_pass.HighAzimuth
-        if da2 > 180:
-            da2 = da2 - 360
+    t0 = next_pass.StartTime
+    t1 = next_pass.HighTime
+    t2 = next_pass.EndTime
 
-        while True:
-            t = datetime.utcnow()
-            if t >= t2: return
+    while datetime.utcnow() < t0:
+        time.sleep(T.SpinStep)
 
-            if t < t1:
-                x = (t - t0).total_seconds() / (t1 - t0).total_seconds()
-                az = self.next_pass.StartAzimuth + x * da1
-                if az < 0:
-                    az = az + 360
-            else:
-                x = (t2 - t).total_seconds() / (t2 - t1).total_seconds()
-                az = self.next_pass.EndAzimuth - x * da2
-                if az < 0:
-                    az = az + 360
+    da1 = next_pass.HighAzimuth - next_pass.StartAzimuth
+    if da1 > 180:
+        da1 = da1 - 360
+    da2 = next_pass.EndAzimuth - next_pass.HighAzimuth
+    if da2 > 180:
+        da2 = da2 - 360
 
-            display.clear()
-            display.spot(Tween.distinv(x), Color.White)
-            display.edge(Azimuth.from_string('N'), Color.Blue)
-            display.edge(az, Color.Red)
-            display.show()
-            time.sleep(T.AnimationUpdate)
+    while True:
+        t = datetime.utcnow()
+        if t >= t2: return
+
+        if t < t1:
+            x = (t - t0).total_seconds() / (t1 - t0).total_seconds()
+            az = next_pass.StartAzimuth + x * da1
+            if az < 0:
+                az = az + 360
+        else:
+            x = (t2 - t).total_seconds() / (t2 - t1).total_seconds()
+            az = next_pass.EndAzimuth - x * da2
+            if az < 0:
+                az = az + 360
+
+        display.clear()
+        display.spot(Tween.distinv(x), Color.White)
+        display.edge(Azimuth.from_string('N'), Color.Blue)
+        display.edge(az, Color.Red)
+        display.show()
+        time.sleep(T.AnimationUpdate)
+
 
 def splash_screen(display):
-    for i in range(20):
-        x = Tween.ease(Tween.back_and_forth(i / 20))
+    steps = int(T.SplashDuration.total_seconds() / T.AnimationUpdate)
+    for i in range(steps):
+        x = Tween.ease(Tween.back_and_forth(i / steps))
         display.clear()
         display.draw(S.iss_panels, 0, 0, Color.yellow(x))
         display.draw(S.iss_body, 0, 0, Color.white(x))
         display.show()
-        time.sleep(0.1)
+        time.sleep(T.AnimationUpdate)
     
     
 def debug(display):
@@ -638,14 +646,14 @@ class IssPy:
 
     def step(self):
         if self.next_pass is None:
-            self.next_pass = Search().run(self.display)
+            self.next_pass = search(self.display)
             info("Next pass:", self.next_pass)
 
         if self.next_pass is not None:
-            Standby(self.next_pass).run(self.display)
-            Countdown(self.next_pass).run(self.display)
-            Setup(self.next_pass).run(self.display)
-            Monitor(self.next_pass).run(self.display)
+            standby(self.display, self.next_pass)
+            countdown(self.display, self.next_pass)
+            setup(self.display, self.next_pass)
+            monitor(self.display, self.next_pass)
             self.next_pass = None
 
 
@@ -662,7 +670,11 @@ def main(arguments):
     if args.file:
         settings = json.load(args.file)
 
-    location = Location.Tintagel
+    location = {'name': 'Tintagel Castle',
+                'lat': 50.6673,
+                'lng': -4.7585,
+                'alt': 39,
+                'tz': 'GMT'}
     if settings:
         location = settings
     info('Location set to "{}"'.format(location['name']))
