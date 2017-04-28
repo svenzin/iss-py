@@ -141,6 +141,14 @@ class TestProvider:
         return [p]
 
 
+class NoneProvider:
+    def name(self):
+        return "NoneProvider"
+
+    def get_next_visibles(self):
+        return []
+
+    
 class API:
     _provider = None
 
@@ -348,6 +356,14 @@ class S:
              [1, 0, 0, 1, 0, 0, 1],
              [1, 0, 0, 0, 0, 0, 1],
              [1, 1, 1, 1, 1, 1, 1]]
+    no_pass = [[0, 0, 1, 1, 1, 1, 0, 0],
+               [0, 1, 1, 0, 0, 1, 1, 0],
+               [0, 1, 1, 0, 0, 1, 1, 0],
+               [0, 0, 0, 0, 1, 1, 0, 0],
+               [0, 0, 0, 1, 1, 0, 0, 0],
+               [0, 0, 0, 0, 0, 0, 0, 0],
+               [0, 0, 0, 1, 1, 0, 0, 0],
+               [0, 0, 0, 1, 1, 0, 0, 0]]
     data = 'eNp1kgkOACEIA4f/f3o3HqWixBjkKlgggvgvQzLe0ilvWD' \
            'ZWfFzyeUbCxs4a21cvVlE1h0Q6Myx9Xe0Z1nhWX4bH05tI' \
            '+oNxIT2srzjR9FeSg9oX4RgUW+Xo4IueL8O+Ypw/MmvH2p' \
@@ -431,6 +447,11 @@ def blink(display, c):
     display.show()
 
 
+def spin_until(t, step=T.SpinStep):
+    while datetime.utcnow() < t:
+        time.sleep(step)
+
+
 def search(display):
     display.clear()
     display.show()
@@ -456,12 +477,7 @@ def search(display):
         time.sleep(T.StatusUpdate)
 
 
-def notify(display, text):
-    n = len(text)
-    l = [S.letter(i) for i in text]
-    x = [2 - 4 * i for i in range(n)]
-    y = [1] * n
-
+def notify_sprite(display, sprites, xs, ys, color):
     for d in range(-7, 7):
         display.clear()
         display.draw(S.iss_body, d, -d, Color.White)
@@ -472,16 +488,24 @@ def notify(display, text):
     display.clear()
     steps = int(T.NotifyFadeDuration.total_seconds() / T.AnimationUpdate)
     for t in range(steps):
-        for ll, xx, yy in zip(l, x, y):
-            display.draw(ll, xx, yy, Color.yellow(t / steps))
+        for s, x, y in zip(sprites, xs, ys):
+            display.draw(s, x, y, Color.scale(t / steps, color))
             display.show()
         time.sleep(T.AnimationUpdate)
     time.sleep(T.NotifyTextDuration.total_seconds())
     for t in range(steps):
-        for ll, xx, yy in zip(l, x, y):
-            display.draw(ll, xx, yy, Color.yellow(1 - t / steps))
+        for s, x, y in zip(sprites, xs, ys):
+            display.draw(s, x, y, Color.scale(1 - t / steps, color))
             display.show()
         time.sleep(T.AnimationUpdate)
+
+
+def notify_text(display, text):
+    n = len(text)
+    l = [S.letter(i) for i in text]
+    x = [4 - 2 * n + 4 * i for i in range(n)]
+    y = [1] * n
+    notify_sprite(display, l, x, y, Color.Yellow)
 
 
 def standby(display, next_pass):
@@ -511,8 +535,8 @@ def standby(display, next_pass):
         while len(reminders) > 0 and t >= reminders[0][0]:
             reminder = reminders.pop(0)
 
-        if reminder:
-            notify(display, reminder[1])
+        if reminder and (t - reminder[0]).total_seconds() < 15:
+            notify_text(display, reminder[1])
 
         blink(display, Color.green(0.5))
         time.sleep(T.StatusUpdate)
@@ -522,23 +546,27 @@ def countdown(display, next_pass):
     display.clear()
     display.show()
 
-    t0 = next_pass.StartTime - T.CountdownDuration - T.SetupDuration
-    t1 = next_pass.StartTime - T.SetupDuration
+    t0 = next_pass.StartTime
+    t1 = next_pass.StartTime - T.CountdownDuration - T.SetupDuration
+    tend = next_pass.StartTime - T.SetupDuration
 
-    while datetime.utcnow() < t0:
-        time.sleep(T.SpinStep)
+    spin_until(t1)
     
     while True:
         t = datetime.utcnow()
-        if t >= t1: return
-        
-        x = (t1 - t).total_seconds() / (t1 - t0).total_seconds()
+        if t >= tend: return
+
+        dt = (t0 - t).total_seconds()
+        dmin = int(dt / 60)
+        dsec = int(dt % 60)
+
         display.clear()
-        display.pie(x, Color.red(0.5))
-        dt = int((t1 - t).total_seconds())
-        if (dt < 100):
-            display.draw(S.digit(dt // 10), 1, 1, Color.White)
-            display.draw(S.digit(dt % 10), 4, 1, Color.White)
+        display.edge(6 * dsec, Color.Red)
+        if (0 < dmin < 10):
+            display.draw(S.digit(dmin % 10), 2, 1, Color.Yellow)
+        else:
+            display.draw(S.digit(dsec // 10), 1, 1, Color.Yellow)
+            display.draw(S.digit(dsec % 10), 4, 1, Color.Yellow)
         display.show()
         time.sleep(T.AnimationUpdate)
 
@@ -568,8 +596,7 @@ def monitor(display, next_pass):
     t1 = next_pass.HighTime
     t2 = next_pass.EndTime
 
-    while datetime.utcnow() < t0:
-        time.sleep(T.SpinStep)
+    spin_until(t0)
 
     da1 = next_pass.HighAzimuth - next_pass.StartAzimuth
     if da1 > 180:
@@ -635,14 +662,38 @@ def debug(display):
         display.draw(S.email, x, 0, Color.White)
         display.show()
         time.sleep(0.1)
-        
+
+
+def question(display, next_pass):
+    if next_pass is None:
+        notify_sprite(display, [S.no_pass], [0], [0], Color.White)
+    else:
+        dt = next_pass.StartTime - datetime.utcnow()
+        days = dt.days
+        hours = dt.seconds // 3600
+        minutes = (dt.seconds // 60) % 60
+        seconds = dt.seconds % 60
+        if days > 0:
+            text = str(days) + 'D'
+        elif hours > 0:
+            text = str(hours) + 'H'
+        elif minutes > 0:
+            text = str(minutes)
+        else:
+            text = ''
+        notify_text(display, text)
+
+
 class IssPy:
     def __init__(self):
+        self.locked = True
         self.display = Display()
+        self.display.sense_hat.stick.direction_any = self.joystick
         self.next_pass = None
-        
+        self.tavail = time.time()
 ##        debug(self.display)
         splash_screen(self.display)
+        self.locked = False
 
     def step(self):
         if self.next_pass is None:
@@ -651,10 +702,20 @@ class IssPy:
 
         if self.next_pass is not None:
             standby(self.display, self.next_pass)
+
+            self.locked = True
             countdown(self.display, self.next_pass)
             setup(self.display, self.next_pass)
             monitor(self.display, self.next_pass)
+            self.locked = False
+
             self.next_pass = None
+
+    def joystick(self, event):
+        if not self.locked:
+            if event.action == 'pressed' and event.timestamp > self.tavail:
+                question(self.display, self.next_pass)
+                self.tavail = time.time()
 
 
 def main(arguments):
@@ -683,8 +744,9 @@ def main(arguments):
 
     try:
         provider = TestProvider()
-        API.set_provider(TestProvider())
-##        API.set_provider(HeavensAbove(location))
+##        API.set_provider(NoneProvider())
+##        API.set_provider(TestProvider())
+        API.set_provider(HeavensAbove(location))
         isspy = IssPy()
         while True:
             data = isspy.step()
