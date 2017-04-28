@@ -4,10 +4,30 @@ import time
 from datetime import date, datetime, timedelta
 from sense_hat import SenseHat
 import math
+import logging
+import sys
+
+
+# Logging facility
+formatter = logging.Formatter('%(levelname)s:%(message)s')
+
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logging.INFO)
+ch.setFormatter(formatter)
+
+logger = logging.getLogger('iss-py')
+logger.setLevel(logging.INFO)
+logger.addHandler(ch)
 
 
 def info(*args):
-    print(datetime.utcnow().strftime("[%y-%m-%d %H:%M:%S]"), *args)
+    t = datetime.utcnow().strftime("[%y-%m-%d %H:%M:%S]")
+    logger.info(' '.join([t] + [str(i) for i in args]))
+
+
+def debug(*args):
+    t = datetime.utcnow().strftime("[%y-%m-%d %H:%M:%S]")
+    logger.debug(' '.join([t] + [str(i) for i in args]))
 
 
 class Azimuth:
