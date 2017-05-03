@@ -275,6 +275,7 @@ class Color:
 class Display:
     def __init__(self):
         self.sense_hat = SenseHat()
+        self.sense_hat.clear()
         self.sense_hat.rotation = 180
         self.pixels = [Color.Black] * 64
         self.enabled = True
@@ -349,6 +350,7 @@ class Display:
         x1 = min(sx, 8 - dx) 
         y0 = max(0, -dy)
         y1 = min(sy, 8 - dy)
+##        debug(mask, (dx, dy), (x0, x1), (y0, y1))
         for y in range(y0, y1):
             for x in range(x0, x1):
                 if mask[y][x] > 0:
@@ -521,6 +523,7 @@ def notify_sprite(display, sprites, xs, ys, color):
 
 
 def notify_text(display, text):
+    debug('notify_text', text)
     n = len(text)
     l = [S.letter(i) for i in text]
     x = [4 - 2 * n + 4 * i for i in range(n)]
@@ -657,31 +660,6 @@ def splash_screen(display):
         display.draw(S.iss_body, 0, 0, Color.white(x))
         display.show()
         time.sleep(T.AnimationUpdate)
-    
-    
-def debug(display):
-    for l in S.alphabet:
-        display.clear()
-        display.letter(l, 0, 0, Color.Red)
-        display.show()
-        time.sleep(0.05)
-
-    display.clear()
-    display.draw(S.iss_panels, 0, 0, Color.Yellow)
-    display.draw(S.iss_body, 0, 0, Color.White)
-    display.show()
-    time.sleep(1)
-
-    display.clear()
-    display.draw(S.email, 0, 0, Color.White)
-    display.show()
-    time.sleep(1)
-
-    for x in range(8):
-        display.clear()
-        display.draw(S.email, x, 0, Color.White)
-        display.show()
-        time.sleep(0.1)
 
 
 def question(display, next_pass):
@@ -711,9 +689,13 @@ class IssPy:
         self.display.sense_hat.stick.direction_any = self.joystick
         self.next_pass = None
         self.tavail = time.time()
-##        debug(self.display)
         splash_screen(self.display)
         self.locked = False
+
+    def __del__(self):
+        if self.display is not None:
+            self.display.sense_hat.stick.direction_any = None
+            self.display.sense_hat.clear()
 
     def step(self):
         if self.next_pass is None:
@@ -763,7 +745,7 @@ def main(arguments):
     S.init()
 
     try:
-        provider = TestProvider()
+##        provider = TestProvider()
 ##        API.set_provider(NoneProvider())
 ##        API.set_provider(TestProvider())
         API.set_provider(HeavensAbove(location))
