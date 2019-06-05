@@ -725,9 +725,7 @@ def main(arguments):
     import json
     parser = argparse.ArgumentParser('IssPy - ISS monitoring system')
     parser.add_argument('-f', type=open, dest='file')
-##    args = parser.parse_args(arguments[1:])
-##    args = parser.parse_args('-f marcellaz.json'.split())
-    args = parser.parse_args('-f pune.json'.split())
+    args = parser.parse_args(arguments[1:])
 
     settings = None
     if args.file:
